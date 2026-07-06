@@ -11,7 +11,12 @@ Your goal is to:
 - Evaluate what your system gets right and wrong
 - Reflect on how this mirrors real world AI recommenders
 
-Replace this paragraph with your own summary of what your version does.
+**My version (VibeCheck 1.0)** is a content-based recommender. It loads an 18-song catalog
+from a CSV, then scores each song against a user's taste profile (favorite genre, favorite
+mood, target energy, and whether they like acoustic music). Songs earn points for matching
+the genre and mood and for being *close* to the target energy, and the top 5 are returned
+with plain-English reasons for each pick. I tested it on five different listener profiles
+and documented its behavior, biases, and limitations in the model card.
 
 ---
 
@@ -271,28 +276,37 @@ so the system is more willing to cross genres to honor the energy target. Tests 
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
+- **Tiny, hand-made catalog.** Only 18 songs, so results are not representative of real
+  listening and under-represented genres rarely get recommended.
+- **Energy-gap bias.** The catalog is bimodal (mostly low- or high-energy songs, few in the
+  middle), so mid-energy listeners get weaker, more arbitrary matches. *(See model card §6.)*
+- **Always returns 5 songs.** Even when nothing matches the user's genre or mood, it still
+  fills the list from energy alone instead of saying "no strong match."
+- **No lyrics, language, context, or popularity.** It only sees the audio-style attributes
+  in the CSV, so it can't capture much of what makes a song feel right.
+- **Single-taste filter bubble.** One favorite genre and one favorite mood mean eclectic
+  listeners are poorly served and the system keeps recommending "more of the same."
 
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+I go deeper on these in the [model card](model_card.md).
 
 ---
 
 ## Reflection
 
-Read and complete `model_card.md`:
+Read the full reflection in [**model_card.md**](model_card.md) §9.
 
-[**Model Card**](model_card.md)
+The biggest thing I learned is that a recommender is really just **scoring and sorting**:
+you turn each song and the user's taste into numbers, give points for how well they match,
+add them up, and sort. There is no magic — the "smart" feeling comes entirely from choosing
+good features and good weights. Watching four simple rules produce lists that genuinely felt
+like recommendations (calm songs for the lofi user, loud songs for the rock user) made that
+click.
 
-Write 1 to 2 paragraphs here about what you learned:
-
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
+I also saw how easily bias can hide in a system like this. My scoring never *intends* to
+favor anyone, yet the shape of the dataset quietly under-serves mid-energy listeners, and my
+weights let a "loud + acoustic" request return a quiet song. Real music apps make thousands of
+these tiny scoring choices, and each one silently decides what millions of people hear — so
+small, invisible design decisions can have very unequal effects on different users.
 
 
 
