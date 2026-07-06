@@ -43,6 +43,38 @@ class UserProfile:
     likes_instrumental: bool = False           # reward instrumental songs
     preferred_language: Optional[str] = None   # reward songs in this language
 
+
+@dataclass
+class ScoringStrategy:
+    """
+    A ranking "mode" (Stretch Challenge 2). Each strategy is just a set of weights
+    for the core rules, so switching modes changes what the recommender prioritizes
+    without touching the scoring code. This is a simple Strategy design pattern:
+    the scoring algorithm stays the same, but the weighting behavior is pluggable.
+    """
+    name: str
+    genre_weight: float = 2.0
+    mood_weight: float = 1.0
+    energy_weight: float = 2.0
+    acoustic_weight: float = 1.0
+
+
+# Registry of available modes. "balanced" reproduces the original weights exactly,
+# so it stays backward compatible with the documented outputs and the tests.
+STRATEGIES: Dict[str, ScoringStrategy] = {
+    "balanced": ScoringStrategy("Balanced", genre_weight=2.0, mood_weight=1.0,
+                                energy_weight=2.0, acoustic_weight=1.0),
+    "genre-first": ScoringStrategy("Genre-First", genre_weight=4.0, mood_weight=1.0,
+                                   energy_weight=1.0, acoustic_weight=1.0),
+    "mood-first": ScoringStrategy("Mood-First", genre_weight=1.0, mood_weight=3.0,
+                                  energy_weight=1.0, acoustic_weight=1.0),
+    "energy-focused": ScoringStrategy("Energy-Focused", genre_weight=1.0, mood_weight=1.0,
+                                      energy_weight=4.0, acoustic_weight=1.0),
+}
+
+DEFAULT_STRATEGY = STRATEGIES["balanced"]
+
+
 def _advanced_points(
     reasons: List[str],
     *,
@@ -106,28 +138,36 @@ class Recommender:
     def __init__(self, songs: List[Song]):
         self.songs = songs
 
-    def _score(self, user: UserProfile, song: Song) -> Tuple[float, List[str]]:
-        """Score one Song against a UserProfile using the Algorithm Recipe."""
+    def _score(self, user: UserProfile, song: Song,
+               strategy: Optional[ScoringStrategy] = None) -> Tuple[float, List[str]]:
+        """Score one Song against a UserProfile using the Algorithm Recipe.
+
+        `strategy` selects a ranking mode (Stretch Challenge 2); omitting it uses the
+        balanced mode, which reproduces the original weights exactly.
+        """
+        if strategy is None:
+            strategy = DEFAULT_STRATEGY
+
         score = 0.0
         reasons: List[str] = []
 
         if song.genre == user.favorite_genre:
-            score += 2.0
-            reasons.append(f"genre match: {song.genre} (+2.0)")
+            score += strategy.genre_weight
+            reasons.append(f"genre match: {song.genre} (+{strategy.genre_weight:.1f})")
 
         if song.mood == user.favorite_mood:
-            score += 1.0
-            reasons.append(f"mood match: {song.mood} (+1.0)")
+            score += strategy.mood_weight
+            reasons.append(f"mood match: {song.mood} (+{strategy.mood_weight:.1f})")
 
-        energy_points = 2.0 * (1 - abs(song.energy - user.target_energy))
+        energy_points = strategy.energy_weight * (1 - abs(song.energy - user.target_energy))
         score += energy_points
         reasons.append(
             f"energy {song.energy:.2f} vs target {user.target_energy:.2f} (+{energy_points:.2f})"
         )
 
         if user.likes_acoustic and song.acousticness >= 0.6:
-            score += 1.0
-            reasons.append(f"acoustic match: {song.acousticness:.2f} (+1.0)")
+            score += strategy.acoustic_weight
+            reasons.append(f"acoustic match: {song.acousticness:.2f} (+{strategy.acoustic_weight:.1f})")
 
         # Advanced attributes (Stretch Challenge 1).
         score += _advanced_points(
@@ -146,9 +186,10 @@ class Recommender:
 
         return score, reasons
 
-    def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
+    def recommend(self, user: UserProfile, k: int = 5,
+                  strategy: Optional[ScoringStrategy] = None) -> List[Song]:
         """Rank all songs by score (highest first) and return the top k."""
-        ranked = sorted(self.songs, key=lambda s: self._score(user, s)[0], reverse=True)
+        ranked = sorted(self.songs, key=lambda s: self._score(user, s, strategy)[0], reverse=True)
         return ranked[:k]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
@@ -190,46 +231,53 @@ def load_songs(csv_path: str) -> List[Dict]:
     print(f"Loaded songs: {len(songs)}")
     return songs
 
-def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
+def score_song(user_prefs: Dict, song: Dict,
+               strategy: Optional[ScoringStrategy] = None) -> Tuple[float, List[str]]:
     """
     Scores a single song against user preferences (the "Scoring Rule").
 
-    Algorithm Recipe:
-      +2.0                              genre match
-      +1.0                              mood match
-      +2.0 * (1 - |energy - target|)    energy closeness (reward being NEAR the target)
-      +1.0                              acoustic match (user likes acoustic and song is acoustic)
+    Algorithm Recipe (weights come from the chosen strategy; defaults shown):
+      +genre_weight   (2.0)            genre match
+      +mood_weight    (1.0)            mood match
+      +energy_weight  (2.0) * (1 - |energy - target|)    energy closeness
+      +acoustic_weight(1.0)            acoustic match (user likes acoustic and song is acoustic)
+
+    `strategy` selects a ranking mode (Stretch Challenge 2). Omitting it uses the
+    balanced mode, which reproduces the original weights exactly.
 
     Returns (score, reasons) where reasons explains each point awarded.
     Required by recommend_songs() and src/main.py
     """
+    if strategy is None:
+        strategy = DEFAULT_STRATEGY
+
     score = 0.0
     reasons: List[str] = []
 
-    # +2.0 for a genre match
+    # Genre match (weighted by the strategy)
     if song["genre"] == user_prefs.get("favorite_genre"):
-        score += 2.0
-        reasons.append(f"genre match: {song['genre']} (+2.0)")
+        score += strategy.genre_weight
+        reasons.append(f"genre match: {song['genre']} (+{strategy.genre_weight:.1f})")
 
-    # +1.0 for a mood match
+    # Mood match
     if song["mood"] == user_prefs.get("favorite_mood"):
-        score += 1.0
-        reasons.append(f"mood match: {song['mood']} (+1.0)")
+        score += strategy.mood_weight
+        reasons.append(f"mood match: {song['mood']} (+{strategy.mood_weight:.1f})")
 
     # Energy closeness: reward songs whose energy is NEAR the target, not just high.
     target_energy = user_prefs.get("target_energy")
     if target_energy is not None:
         closeness = 1 - abs(song["energy"] - target_energy)  # 1.0 = exact, 0.0 = far
-        energy_points = 2.0 * closeness
+        energy_points = strategy.energy_weight * closeness
         score += energy_points
         reasons.append(
             f"energy {song['energy']:.2f} vs target {target_energy:.2f} (+{energy_points:.2f})"
         )
 
-    # +1.0 acoustic match
+    # Acoustic match
     if user_prefs.get("likes_acoustic") and song["acousticness"] >= 0.6:
-        score += 1.0
-        reasons.append(f"acoustic match: {song['acousticness']:.2f} (+1.0)")
+        score += strategy.acoustic_weight
+        reasons.append(f"acoustic match: {song['acousticness']:.2f} (+{strategy.acoustic_weight:.1f})")
 
     # Advanced attributes (Stretch Challenge 1). Uses .get() so songs/profiles that
     # predate these columns still work.
@@ -249,7 +297,9 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
 
     return score, reasons
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
+def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5,
+                    strategy: Optional[ScoringStrategy] = None,
+                    diversity_penalty: float = 0.0) -> List[Tuple[Dict, float, str]]:
     """
     Ranks the whole catalog and returns the top k (the "Ranking Rule").
 
@@ -258,19 +308,52 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
       2. Sort all scored songs from highest score to lowest.
       3. Return the top k.
 
+    `strategy` picks a ranking mode (Stretch Challenge 2).
+
+    `diversity_penalty` (Stretch Challenge 3): when > 0, songs are picked greedily and
+    a candidate loses this many points for every already-picked song that shares its
+    artist or genre. This stops the top list from stacking one artist/genre. When 0
+    (the default) the behavior is the plain score sort, unchanged from before.
+
     Expected return format: (song_dict, score, explanation)
     Required by src/main.py
     """
     # 1. Score every song. Build the explanation string from the reasons list.
     scored = []
     for song in songs:
-        score, reasons = score_song(user_prefs, song)
+        score, reasons = score_song(user_prefs, song, strategy)
         explanation = "; ".join(reasons) if reasons else "no matching preferences"
         scored.append((song, score, explanation))
 
-    # 2. sorted() returns a NEW list (leaves `scored`/`songs` untouched); key picks the
-    #    score (index 1); reverse=True puts the highest score first.
-    ranked = sorted(scored, key=lambda item: item[1], reverse=True)
+    # 2a. No diversity penalty -> plain sort by score, highest first (original behavior).
+    if diversity_penalty <= 0:
+        ranked = sorted(scored, key=lambda item: item[1], reverse=True)
+        return ranked[:k]
 
-    # 3. Slice the top k.
-    return ranked[:k]
+    # 2b. Diversity penalty -> greedy selection. Each round, pick the song with the best
+    #     *adjusted* score, where the penalty grows with how many already-selected songs
+    #     share its artist or genre.
+    pool = list(scored)
+    selected: List[Tuple[Dict, float, str]] = []
+    while pool and len(selected) < k:
+        best_item = None
+        best_adj = None
+        for item in pool:
+            song, score, explanation = item
+            repeats = sum(
+                1 for sel_song, _, _ in selected
+                if sel_song["artist"] == song["artist"] or sel_song["genre"] == song["genre"]
+            )
+            adjusted = score - diversity_penalty * repeats
+            if best_adj is None or adjusted > best_adj:
+                best_adj, best_item = adjusted, item
+
+        song, score, explanation = best_item
+        # Note in the explanation if a diversity penalty was applied.
+        penalty = score - best_adj
+        if penalty > 0:
+            explanation = f"{explanation}; diversity penalty (-{penalty:.1f})"
+        selected.append((song, best_adj, explanation))
+        pool.remove(best_item)
+
+    return selected

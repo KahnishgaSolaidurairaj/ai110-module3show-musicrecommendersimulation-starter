@@ -1,24 +1,25 @@
 """
 Command line runner for the Music Recommender Simulation.
 
-This file helps you quickly run and test your recommender.
-
-You will implement the functions in recommender.py:
-- load_songs
-- score_song
-- recommend_songs
+This file helps you quickly run and test your recommender. It also demonstrates the
+stretch features:
+  - multiple scoring modes / strategies (Challenge 2)
+  - a diversity penalty (Challenge 3)
+  - a formatted summary table with reasons (Challenge 4)
 """
+
+import textwrap
 
 try:
     # When run as a module from the project root: python -m src.main
-    from src.recommender import load_songs, recommend_songs
+    from src.recommender import load_songs, recommend_songs, STRATEGIES
 except ModuleNotFoundError:
     # When run directly from inside src/: python main.py
-    from recommender import load_songs, recommend_songs
+    from recommender import load_songs, recommend_songs, STRATEGIES
 
 
-# Profiles for stress testing. The first three are "normal" tastes; the last
-# two are adversarial / edge cases designed to try to trick the scoring logic.
+# Profiles for stress testing. The first three are "normal" tastes; the next two are
+# adversarial / edge cases, and the last exercises the advanced attributes.
 PROFILES = {
     "High-Energy Pop": {
         "favorite_genre": "pop", "favorite_mood": "happy",
@@ -56,33 +57,90 @@ PROFILES = {
     },
 }
 
+# Column layout for the summary table: (header, width).
+_COLUMNS = [("#", 2), ("Song", 20), ("Artist", 16), ("Genre / Mood", 16),
+            ("Score", 6), ("Why (reasons)", 42)]
 
-def print_recommendations(name: str, user_prefs: dict, songs: list, k: int = 5) -> None:
-    """Run the recommender for one profile and print a clean ranked list."""
-    recommendations = recommend_songs(user_prefs, songs, k=k)
 
-    print("\n" + "=" * 56)
-    print(f"  {name.upper()}")
-    print(
-        f"  For: {user_prefs['favorite_genre']} / {user_prefs['favorite_mood']}"
-        f" | target energy {user_prefs['target_energy']:.2f}"
-        f" | acoustic: {user_prefs['likes_acoustic']}"
-    )
-    print("=" * 56 + "\n")
+def render_table(recommendations: list) -> str:
+    """
+    Render recommendations as a formatted ASCII table (Stretch Challenge 4).
+
+    The table includes the reasons for each score, wrapped inside the last column so
+    every point that contributed to the score is visible.
+    """
+    border = "+" + "+".join("-" * (w + 2) for _, w in _COLUMNS) + "+"
+    head = "|" + "|".join(f" {h:<{w}} " for h, w in _COLUMNS) + "|"
+    lines = [border, head, border]
 
     for rank, (song, score, explanation) in enumerate(recommendations, start=1):
-        print(f"{rank}. {song['title']} — {song['artist']}")
-        print(f"   Score: {score:.2f}   ({song['genre']} / {song['mood']})")
-        print("   Reasons:")
+        raw_cells = [
+            str(rank),
+            song["title"],
+            song["artist"],
+            f"{song['genre']} / {song['mood']}",
+            f"{score:.2f}",
+        ]
+        # Wrap each of the first five cells to its column width.
+        wrapped = [textwrap.wrap(val, w) or [""] for (_, w), val in zip(_COLUMNS, raw_cells)]
+        # The "Why" column: one wrapped block per reason.
+        why_width = _COLUMNS[5][1]
+        why_lines = []
         for reason in explanation.split("; "):
-            print(f"     • {reason}")
-        print()
+            why_lines.extend(textwrap.wrap(reason, why_width) or [""])
+        wrapped.append(why_lines)
+
+        height = max(len(cell) for cell in wrapped)
+        for i in range(height):
+            row = []
+            for (_, w), cell in zip(_COLUMNS, wrapped):
+                text = cell[i] if i < len(cell) else ""
+                row.append(f" {text:<{w}} ")
+            lines.append("|" + "|".join(row) + "|")
+        lines.append(border)
+
+    return "\n".join(lines)
+
+
+def _header(title: str, subtitle: str = "") -> None:
+    print("\n" + "=" * 72)
+    print(f"  {title}")
+    if subtitle:
+        print(f"  {subtitle}")
+    print("=" * 72)
+
+
+def print_recommendations(name: str, user_prefs: dict, songs: list, k: int = 5,
+                          strategy=None, diversity_penalty: float = 0.0) -> None:
+    """Run the recommender for one profile and print the results as a table."""
+    recs = recommend_songs(user_prefs, songs, k=k,
+                           strategy=strategy, diversity_penalty=diversity_penalty)
+    subtitle = (f"{user_prefs['favorite_genre']} / {user_prefs['favorite_mood']}"
+                f" | target energy {user_prefs['target_energy']:.2f}"
+                f" | acoustic: {user_prefs['likes_acoustic']}")
+    _header(name.upper(), subtitle)
+    print(render_table(recs))
 
 
 def main() -> None:
     songs = load_songs("data/songs.csv")
+
+    # 1. Every profile, default (balanced) mode, as a table.
     for name, prefs in PROFILES.items():
         print_recommendations(name, prefs, songs)
+
+    # 2. Scoring modes (Challenge 2): same profile, different strategies.
+    demo_name = "High-Energy Pop"
+    demo_prefs = PROFILES[demo_name]
+    for key, strategy in STRATEGIES.items():
+        print_recommendations(f"{demo_name}  [mode: {strategy.name}]",
+                              demo_prefs, songs, k=4, strategy=strategy)
+
+    # 3. Diversity penalty (Challenge 3): off vs on for a genre-heavy profile.
+    print_recommendations("High-Energy Pop  [diversity OFF]",
+                          demo_prefs, songs, k=5, diversity_penalty=0.0)
+    print_recommendations("High-Energy Pop  [diversity ON, penalty 1.5]",
+                          demo_prefs, songs, k=5, diversity_penalty=1.5)
 
 
 if __name__ == "__main__":

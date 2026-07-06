@@ -81,12 +81,68 @@ which is a good fit for an agent making multi-step changes.
 
 **Which design pattern did you use?**
 
-<!-- e.g., Strategy, Factory, Observer, etc. -->
+The **Strategy pattern**. I needed multiple scoring "modes" (Stretch Challenge 2) —
+Genre-First, Mood-First, Energy-Focused, and a Balanced default — that a user can switch
+between in `main.py`. The Strategy pattern lets me swap the *weighting behavior* without
+duplicating or editing the scoring algorithm.
 
 **How did AI help you brainstorm or implement it?**
 
-<!-- Describe the conversation or suggestions that led to your decision -->
+I asked the AI: *"I want two or more ranking strategies (genre-first, mood-first,
+energy-focused) that I can switch between in main.py. Suggest a simple design pattern that
+keeps recommender.py modular instead of me writing an if/elif for every mode."* The AI
+walked through a few options:
+
+- A big `if mode == "genre-first": ... elif ...` block — rejected, because it hard-codes
+  every mode and gets messy fast.
+- Subclassing the recommender per mode — rejected as overkill for what is really just a
+  change of weights.
+- A **Strategy** object that holds the weights and is passed into the scoring function —
+  chosen, because each mode becomes a small data object and the scoring code never changes.
+
+The AI also pointed out that if I made "Balanced" reproduce the original weights (2/1/2/1)
+and passed the strategy as an *optional* argument, all my existing profiles, documented
+outputs, and tests would keep working unchanged. I verified that — `pytest` still passes and
+the balanced pop/happy profile still scores 4.96.
 
 **How does the pattern appear in your final code?**
 
-<!-- Point to the relevant class or method -->
+- `ScoringStrategy` (a dataclass in `src/recommender.py`) is the strategy object: it just
+  holds `genre_weight`, `mood_weight`, `energy_weight`, and `acoustic_weight`.
+- `STRATEGIES` is a registry of ready-made modes (`balanced`, `genre-first`, `mood-first`,
+  `energy-focused`).
+- `score_song()`, `Recommender._score()`, and `recommend_songs()` all take an optional
+  `strategy` argument and read the weights from it (defaulting to `balanced`).
+- `main.py` loops over `STRATEGIES` to show the same profile ranked under each mode.
+
+Running the demo confirms the modes really differ: under **Genre-First** both pop songs
+(Sunrise City, Gym Hero) sit at the top, while under **Mood-First** the happy-mood Rooftop
+Lights jumps up — same songs, different priorities, no change to the scoring algorithm.
+
+---
+
+## Additional Stretch Features
+
+### Diversity & Fairness (Challenge 3)
+
+**Prompt used:** *"Add a diversity penalty to `recommend_songs`. After scoring, pick songs
+greedily for the top-k list, and subtract a fixed penalty from a candidate's score for every
+song already in the list that shares its artist or genre. Keep it off by default so existing
+behavior doesn't change, and show the penalty in the explanation."*
+
+**Result:** `recommend_songs(..., diversity_penalty=1.5)` now selects greedily and applies the
+penalty. In the demo, the second pop song (Gym Hero) drops from #2 to #3 with a visible
+`diversity penalty (-1.5)` because it shares the genre `pop` with #1 (Sunrise City), letting a
+different-genre song (indie-pop Rooftop Lights) move up. With `diversity_penalty=0` (default),
+the ranking is identical to before.
+
+### Visual Summary Table (Challenge 4)
+
+**Prompt used:** *"Format the terminal recommendations as a table using simple ASCII (no extra
+dependency like tabulate, since it isn't installed). The table must include a column with the
+`reasons` for each score, wrapped so all the reasons are readable."*
+
+**Result:** `render_table()` in `main.py` builds a bordered ASCII grid with columns for rank,
+song, artist, genre/mood, score, and a wrapped **Why (reasons)** column, so every point that
+contributed to a score is visible in the table itself. I chose ASCII over `tabulate` so the
+app still runs with only the packages already in `requirements.txt`.
