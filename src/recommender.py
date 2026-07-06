@@ -1,6 +1,6 @@
 import csv
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class Song:
@@ -18,6 +18,12 @@ class Song:
     valence: float
     danceability: float
     acousticness: float
+    # Advanced attributes (Stretch Challenge 1). Defaults keep older callers/tests working.
+    popularity: int = 0             # 0-100
+    release_decade: int = 0         # e.g. 1980, 2020
+    mood_tags: List[str] = field(default_factory=list)  # e.g. ["nostalgic", "moody"]
+    instrumentalness: float = 0.0   # 0-1
+    language: str = ""              # e.g. "english", "instrumental"
 
 @dataclass
 class UserProfile:
@@ -29,6 +35,68 @@ class UserProfile:
     favorite_mood: str
     target_energy: float
     likes_acoustic: bool
+    # Advanced preferences (Stretch Challenge 1). All optional — a rule only applies
+    # when its preference is set, so older profiles score exactly as before.
+    min_popularity: Optional[int] = None       # reward songs at/above this popularity
+    favorite_decade: Optional[int] = None      # reward songs from this decade
+    preferred_mood_tags: Optional[List[str]] = None  # reward each matching tag
+    likes_instrumental: bool = False           # reward instrumental songs
+    preferred_language: Optional[str] = None   # reward songs in this language
+
+def _advanced_points(
+    reasons: List[str],
+    *,
+    popularity: int,
+    release_decade: int,
+    mood_tags: List[str],
+    instrumentalness: float,
+    language: str,
+    min_popularity: Optional[int],
+    favorite_decade: Optional[int],
+    preferred_mood_tags: Optional[List[str]],
+    likes_instrumental: bool,
+    preferred_language: Optional[str],
+) -> float:
+    """
+    Scoring for the advanced attributes (Stretch Challenge 1). Shared by both the
+    dict-based score_song() and the object-based Recommender._score().
+
+    Each rule only fires when the matching preference is set, so profiles that don't
+    use these preferences score exactly as they did before.
+
+      +1.0        popularity >= the user's minimum
+      +1.0        release_decade == the user's favorite decade
+      +0.5/tag    each preferred mood tag the song carries (capped at +1.5)
+      +1.0        user likes instrumental and song is instrumental (>= 0.5)
+      +1.0        song language == the user's preferred language
+    """
+    pts = 0.0
+
+    if min_popularity is not None and popularity >= min_popularity:
+        pts += 1.0
+        reasons.append(f"popular enough: {popularity} >= {min_popularity} (+1.0)")
+
+    if favorite_decade is not None and release_decade == favorite_decade:
+        pts += 1.0
+        reasons.append(f"decade match: {release_decade}s (+1.0)")
+
+    if preferred_mood_tags:
+        matched = [t for t in preferred_mood_tags if t in mood_tags]
+        if matched:
+            tag_pts = min(1.5, 0.5 * len(matched))
+            pts += tag_pts
+            reasons.append(f"mood tags {matched} (+{tag_pts:.1f})")
+
+    if likes_instrumental and instrumentalness >= 0.5:
+        pts += 1.0
+        reasons.append(f"instrumental: {instrumentalness:.2f} (+1.0)")
+
+    if preferred_language is not None and language == preferred_language:
+        pts += 1.0
+        reasons.append(f"language match: {language} (+1.0)")
+
+    return pts
+
 
 class Recommender:
     """
@@ -61,6 +129,21 @@ class Recommender:
             score += 1.0
             reasons.append(f"acoustic match: {song.acousticness:.2f} (+1.0)")
 
+        # Advanced attributes (Stretch Challenge 1).
+        score += _advanced_points(
+            reasons,
+            popularity=song.popularity,
+            release_decade=song.release_decade,
+            mood_tags=song.mood_tags,
+            instrumentalness=song.instrumentalness,
+            language=song.language,
+            min_popularity=user.min_popularity,
+            favorite_decade=user.favorite_decade,
+            preferred_mood_tags=user.preferred_mood_tags,
+            likes_instrumental=user.likes_instrumental,
+            preferred_language=user.preferred_language,
+        )
+
         return score, reasons
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
@@ -78,14 +161,15 @@ def load_songs(csv_path: str) -> List[Dict]:
     Loads songs from a CSV file into a list of dictionaries.
 
     Numeric columns are converted so we can do math on them later:
-      - id, tempo_bpm  -> int
-      - energy, valence, danceability, acousticness -> float
-    Text columns (title, artist, genre, mood) stay as strings.
+      - id, tempo_bpm, popularity, release_decade -> int
+      - energy, valence, danceability, acousticness, instrumentalness -> float
+    mood_tags is split on "|" into a list of tags.
+    Text columns (title, artist, genre, mood, language) stay as strings.
 
     Required by src/main.py
     """
-    int_fields = {"id", "tempo_bpm"}
-    float_fields = {"energy", "valence", "danceability", "acousticness"}
+    int_fields = {"id", "tempo_bpm", "popularity", "release_decade"}
+    float_fields = {"energy", "valence", "danceability", "acousticness", "instrumentalness"}
 
     songs: List[Dict] = []
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -97,6 +181,8 @@ def load_songs(csv_path: str) -> List[Dict]:
                     song[key] = int(value)
                 elif key in float_fields:
                     song[key] = float(value)
+                elif key == "mood_tags":
+                    song[key] = value.split("|") if value else []
                 else:
                     song[key] = value
             songs.append(song)
@@ -144,6 +230,22 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     if user_prefs.get("likes_acoustic") and song["acousticness"] >= 0.6:
         score += 1.0
         reasons.append(f"acoustic match: {song['acousticness']:.2f} (+1.0)")
+
+    # Advanced attributes (Stretch Challenge 1). Uses .get() so songs/profiles that
+    # predate these columns still work.
+    score += _advanced_points(
+        reasons,
+        popularity=song.get("popularity", 0),
+        release_decade=song.get("release_decade", 0),
+        mood_tags=song.get("mood_tags", []),
+        instrumentalness=song.get("instrumentalness", 0.0),
+        language=song.get("language", ""),
+        min_popularity=user_prefs.get("min_popularity"),
+        favorite_decade=user_prefs.get("favorite_decade"),
+        preferred_mood_tags=user_prefs.get("preferred_mood_tags"),
+        likes_instrumental=user_prefs.get("likes_instrumental", False),
+        preferred_language=user_prefs.get("preferred_language"),
+    )
 
     return score, reasons
 

@@ -40,6 +40,11 @@ My version is a small, transparent **content-based** recommender. It has no othe
 - `tempo_bpm` — beats per minute (normalized before scoring)
 - `danceability` — 0–1, tiebreaker
 - `acousticness` — 0–1, organic ↔ electronic feel
+- `popularity` — 0–100, how well-known the song is *(stretch feature)*
+- `release_decade` — e.g. 1980, 2020 *(stretch feature)*
+- `mood_tags` — detailed tags like `nostalgic`, `aggressive`, `euphoric` *(stretch feature)*
+- `instrumentalness` — 0–1, how instrumental (vocal-free) the song is *(stretch feature)*
+- `language` — e.g. `english`, `instrumental` *(stretch feature)*
 
 **`UserProfile`** attributes:
 

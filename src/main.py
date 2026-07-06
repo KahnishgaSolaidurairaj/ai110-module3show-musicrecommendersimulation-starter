@@ -44,6 +44,16 @@ PROFILES = {
         "favorite_genre": "polka", "favorite_mood": "ecstatic",
         "target_energy": 0.50, "likes_acoustic": False,
     },
+    # Advanced profile (Stretch Challenge 1): exercises the new attributes —
+    # popularity, release decade, detailed mood tags, instrumentalness, language.
+    "Retro Synthwave Nostalgia": {
+        "favorite_genre": "synthwave", "favorite_mood": "moody",
+        "target_energy": 0.75, "likes_acoustic": False,
+        "favorite_decade": 1980,               # loves 80s tracks
+        "preferred_mood_tags": ["nostalgic"],  # wants a nostalgic feel
+        "min_popularity": 60,                  # reasonably well-known songs
+        "preferred_language": "english",       # with vocals in English
+    },
 }
 
 

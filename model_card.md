@@ -57,9 +57,11 @@ The catalog is a small CSV file, `data/songs.csv`, with **18 songs**.
 
 Each song has these features:
 
-- Text: title, artist, genre, mood.
-- Numbers (0.0–1.0): energy, valence, danceability, acousticness.
+- Text: title, artist, genre, mood, language.
+- Numbers (0.0–1.0): energy, valence, danceability, acousticness, instrumentalness.
 - Number: tempo in beats per minute.
+- Advanced attributes (added as a stretch feature): popularity (0–100), release decade,
+  and detailed mood tags (e.g. `nostalgic`, `aggressive`, `euphoric`).
 
 **Genres** include pop, lofi, rock, ambient, jazz, synthwave, indie pop, hip hop,
 classical, country, edm, reggae, metal, r&b, and folk. **Moods** include happy, chill,
