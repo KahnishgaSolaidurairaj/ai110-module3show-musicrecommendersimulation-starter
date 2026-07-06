@@ -43,6 +43,57 @@ My version is a small, transparent **content-based** recommender. It has no othe
 - `target_energy` — 0–1, the energy level the user wants (scored by *closeness*)
 - `likes_acoustic` — boolean, whether to reward high-acousticness songs
 
+### Algorithm Recipe (Scoring Rule)
+
+Each song's score is the sum of these rules. Higher total = better recommendation.
+
+| Rule | Points | Why this weight |
+|---|---|---|
+| **Genre match** (`song.genre == favorite_genre`) | **+2.0** | Strongest identity signal; a genre mismatch is often a dealbreaker. |
+| **Mood match** (`song.mood == favorite_mood`) | **+1.0** | Weaker signal, and overlaps with energy — kept at half of genre to avoid double-counting. |
+| **Energy closeness** | **+2.0 × (1 − \|song.energy − target_energy\|)** | Rewards songs *near* the target, not just high-energy ones. Closeness, not magnitude. |
+| **Acoustic match** (`likes_acoustic and song.acousticness ≥ 0.6`) | **+1.0** | Bonus when the user wants acoustic and the song delivers. |
+
+**Ranking rule:** apply the scoring rule to every song, sort by score descending, and return the top `k`.
+
+```python
+score = 0.0
+if song.genre == user["favorite_genre"]: score += 2.0
+if song.mood  == user["favorite_mood"]:  score += 1.0
+score += 2.0 * (1 - abs(song.energy - user["target_energy"]))
+if user["likes_acoustic"] and song.acousticness >= 0.6: score += 1.0
+```
+
+These weights are tunable — see **Experiments You Tried** for what happens when they change.
+
+### Data Flow
+
+How a single song travels from the CSV to a ranked list:
+
+```
+INPUT                    PROCESS (the loop)                 OUTPUT
+─────                    ──────────────────                 ──────
+User Prefs  ─┐
+             │      ┌─────────────────────────────┐
+songs.csv ───┼────▶ │ for each song in catalog:    │
+             │      │   score = scoring rule       │──▶ sort by score  ──▶ Top K
+             │      │   (genre + mood + energy +   │    (descending)       recommendations
+             │      │    acoustic bonuses)         │
+             │      └─────────────────────────────┘
+             │            SCORING RULE                    RANKING RULE
+```
+
+- **Input:** the `UserProfile` dict + the parsed list of songs from `data/songs.csv`.
+- **Process:** loop over every song, apply the scoring rule → one number per song (this is `score_song`).
+- **Output:** sort all scored songs high→low, slice the top `k` (this is `recommend_songs`).
+
+### Potential Biases
+
+- **Genre over-prioritization.** With genre weighted at +2.0 (the largest categorical bonus), the system may bury a song that perfectly matches the user's mood and energy simply because its genre differs — ignoring great cross-genre picks a real listener would enjoy.
+- **Popularity/catalog bias.** The catalog is tiny (18 songs) and skewed toward certain genres (lofi, pop). Under-represented genres have fewer chances to be recommended regardless of fit.
+- **Mainstream-taste bias.** Single-value `favorite_genre`/`favorite_mood` fields assume a user has *one* taste; eclectic listeners are poorly served, and the system reinforces a narrow "filter bubble" of similar songs.
+- **Energy/mood double-counting.** Because `mood` correlates with `energy`, the calm-vs-intense signal is effectively counted twice, subtly amplifying that axis over others like danceability or valence.
+
 ### Feature Analysis (from `data/songs.csv`)
 
 The catalog exposes these attributes: `genre`, `mood`, `energy`, `tempo_bpm`, `valence`, `danceability`, `acousticness`.
@@ -137,15 +188,45 @@ You can add more tests in `tests/test_recommender.py`.
 
 ## Sample Recommendation Output
 
-Paste a sample of your recommender's output here as a text block so a reader can see what it produces:
+Terminal output from `python -m src.main` for the upbeat "pop / happy" profile
+(`favorite_genre=pop`, `favorite_mood=happy`, `target_energy=0.80`, `likes_acoustic=False`):
 
 ```
-# e.g.:
-# User profile: genre=indie, mood=chill, energy=low
-# Recommendations:
-#   1. ...
-#   2. ...
-#   3. ...
+Loaded songs: 18
+
+========================================================
+  TOP RECOMMENDATIONS
+  For: pop / happy | target energy 0.80 | acoustic: False
+========================================================
+
+1. Sunrise City — Neon Echo
+   Score: 4.96   (pop / happy)
+   Reasons:
+     • genre match: pop (+2.0)
+     • mood match: happy (+1.0)
+     • energy 0.82 vs target 0.80 (+1.96)
+
+2. Gym Hero — Max Pulse
+   Score: 3.74   (pop / intense)
+   Reasons:
+     • genre match: pop (+2.0)
+     • energy 0.93 vs target 0.80 (+1.74)
+
+3. Rooftop Lights — Indigo Parade
+   Score: 2.92   (indie pop / happy)
+   Reasons:
+     • mood match: happy (+1.0)
+     • energy 0.76 vs target 0.80 (+1.92)
+
+4. Concrete Kingdom — Vell
+   Score: 2.00   (hip hop / energetic)
+   Reasons:
+     • energy 0.80 vs target 0.80 (+2.00)
+
+5. Night Drive Loop — Neon Echo
+   Score: 1.90   (synthwave / moody)
+   Reasons:
+     • energy 0.75 vs target 0.80 (+1.90)
 ```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or demo video link here -->
