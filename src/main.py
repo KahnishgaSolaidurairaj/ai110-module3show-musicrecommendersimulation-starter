@@ -17,23 +17,42 @@ except ModuleNotFoundError:
     from recommender import load_songs, recommend_songs
 
 
-def main() -> None:
-    songs = load_songs("data/songs.csv") 
+# Profiles for stress testing. The first three are "normal" tastes; the last
+# two are adversarial / edge cases designed to try to trick the scoring logic.
+PROFILES = {
+    "High-Energy Pop": {
+        "favorite_genre": "pop", "favorite_mood": "happy",
+        "target_energy": 0.90, "likes_acoustic": False,
+    },
+    "Chill Lofi": {
+        "favorite_genre": "lofi", "favorite_mood": "chill",
+        "target_energy": 0.35, "likes_acoustic": True,
+    },
+    "Deep Intense Rock": {
+        "favorite_genre": "rock", "favorite_mood": "intense",
+        "target_energy": 0.95, "likes_acoustic": False,
+    },
+    # Edge case: conflicting preferences — wants HIGH energy but a moody/acoustic
+    # feel, which almost never co-occur in the catalog.
+    "Conflicting (loud + moody + acoustic)": {
+        "favorite_genre": "jazz", "favorite_mood": "moody",
+        "target_energy": 0.95, "likes_acoustic": True,
+    },
+    # Edge case: nothing in the catalog matches genre or mood, so ranking must
+    # fall back to pure energy closeness.
+    "No-Match (polka / ecstatic)": {
+        "favorite_genre": "polka", "favorite_mood": "ecstatic",
+        "target_energy": 0.50, "likes_acoustic": False,
+    },
+}
 
-    # Taste profile: an upbeat "pop / happy" listener.
-    # Each key is a target the recommender compares songs against.
-    user_prefs = {
-        "favorite_genre": "pop",      # categorical match bonus
-        "favorite_mood": "happy",     # categorical match bonus
-        "target_energy": 0.80,        # scored by CLOSENESS, not higher-is-better
-        "likes_acoustic": False,      # rewards high-acousticness songs
-    }
 
-    recommendations = recommend_songs(user_prefs, songs, k=5)
+def print_recommendations(name: str, user_prefs: dict, songs: list, k: int = 5) -> None:
+    """Run the recommender for one profile and print a clean ranked list."""
+    recommendations = recommend_songs(user_prefs, songs, k=k)
 
-    # ---- Clean, readable terminal layout ----
     print("\n" + "=" * 56)
-    print("  TOP RECOMMENDATIONS")
+    print(f"  {name.upper()}")
     print(
         f"  For: {user_prefs['favorite_genre']} / {user_prefs['favorite_mood']}"
         f" | target energy {user_prefs['target_energy']:.2f}"
@@ -48,6 +67,12 @@ def main() -> None:
         for reason in explanation.split("; "):
             print(f"     • {reason}")
         print()
+
+
+def main() -> None:
+    songs = load_songs("data/songs.csv")
+    for name, prefs in PROFILES.items():
+        print_recommendations(name, prefs, songs)
 
 
 if __name__ == "__main__":

@@ -241,6 +241,32 @@ Use this section to document the experiments you ran. For example:
 - What happened when you added tempo or valence to the score
 - How did your system behave for different types of users
 
+### Experiment: Weight Shift (energy ×2, genre ÷2)
+
+I doubled the energy weight (`2.0 → 4.0 × closeness`) and halved the genre weight
+(`+2.0 → +1.0`) in both scoring paths of `recommender.py`, then re-ran all five profiles.
+
+**What stayed the same:** the three "normal" profiles kept the *same* #1 (Sunrise City,
+Library Rain, Storm Runner) — their top picks match genre *and* energy, so shifting the
+balance between those two rules didn't change the winner.
+
+**What changed (the interesting part):** the **Conflicting** profile (wants loud + moody +
+acoustic). Under the original weights, #1 was *Coffee Shop Stories* — a **quiet 0.37-energy**
+acoustic jazz track that won on genre+acoustic bonuses despite ignoring the user's request
+for high energy. After the shift, #1 became **Night Drive Loop** (synthwave / **moody**,
+energy 0.75), and the quiet jazz track dropped out of the top 5 entirely.
+
+```
+CONFLICTING profile — before vs after
+  before (genre 2.0, energy 2.0):  1. Coffee Shop Stories (jazz, energy 0.37)  ← quiet
+  after  (genre 1.0, energy 4.0):  1. Night Drive Loop   (synthwave/moody, 0.75) ← louder
+```
+
+**More accurate or just different?** For most users it was just *different* (same winners),
+but for the conflicting user it was genuinely **more accurate** — a listener asking for loud
+music should not get a near-silent track at #1. The trade-off is that genre now matters less,
+so the system is more willing to cross genres to honor the energy target. Tests still pass.
+
 ---
 
 ## Limitations and Risks

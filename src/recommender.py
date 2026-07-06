@@ -38,13 +38,40 @@ class Recommender:
     def __init__(self, songs: List[Song]):
         self.songs = songs
 
+    def _score(self, user: UserProfile, song: Song) -> Tuple[float, List[str]]:
+        """Score one Song against a UserProfile using the Algorithm Recipe."""
+        score = 0.0
+        reasons: List[str] = []
+
+        if song.genre == user.favorite_genre:
+            score += 2.0
+            reasons.append(f"genre match: {song.genre} (+2.0)")
+
+        if song.mood == user.favorite_mood:
+            score += 1.0
+            reasons.append(f"mood match: {song.mood} (+1.0)")
+
+        energy_points = 2.0 * (1 - abs(song.energy - user.target_energy))
+        score += energy_points
+        reasons.append(
+            f"energy {song.energy:.2f} vs target {user.target_energy:.2f} (+{energy_points:.2f})"
+        )
+
+        if user.likes_acoustic and song.acousticness >= 0.6:
+            score += 1.0
+            reasons.append(f"acoustic match: {song.acousticness:.2f} (+1.0)")
+
+        return score, reasons
+
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        """Rank all songs by score (highest first) and return the top k."""
+        ranked = sorted(self.songs, key=lambda s: self._score(user, s)[0], reverse=True)
+        return ranked[:k]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        """Return a human-readable string of why this song matches the user."""
+        _, reasons = self._score(user, song)
+        return "; ".join(reasons) if reasons else "no matching preferences"
 
 def load_songs(csv_path: str) -> List[Dict]:
     """
