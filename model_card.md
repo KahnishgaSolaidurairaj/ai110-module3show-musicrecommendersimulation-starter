@@ -107,6 +107,23 @@ with a good cross-genre pick. Fixing this would require balancing the catalog's 
 distribution and/or allowing users to express a *range* or *list* of preferences instead
 of one value.
 
+### Fairness feature: diversity penalty
+
+To push back on the filter-bubble risk above, the recommender includes an optional
+**diversity penalty** (`recommend_songs(..., diversity_penalty=...)`). When it is switched
+on, songs are chosen greedily and a candidate loses points for every song already in the
+top list that shares its **artist or genre**. This stops the results from stacking two or
+three songs by the same artist or from the same genre, so the top list spans a wider range
+of music.
+
+This improves fairness in two ways. First, it gives *smaller artists and less-dominant
+genres* a real chance to appear, instead of the catalog's most-represented genre crowding
+out everything else. Second, it serves the *listener* more fairly by widening variety rather
+than trapping them in a narrow loop of near-identical songs. In the demo, turning the penalty
+on drops the second pop song (Gym Hero) from #2 to #3 — with its `diversity penalty (-1.5)`
+shown in the reasons — and lets a different-genre song move up. The penalty defaults to `0`
+(off), so it is an opt-in fairness control rather than a change to the baseline behavior.
+
 ---
 
 ## 7. Evaluation  
